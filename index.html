@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Garden Sim</title>
+    <!--
+    
+    Garden Sim
+    
+    Eveloutionary algoritm to efficiently fill the garden.
+    Rules
+    1) A garden square "##" can be no more than 2 squares horizontally or verically from a walkway "::"
+    2) Walkways must occur in blocks of 3x3
+    3) Walkways must always connect back to an edge
+    
+    Algorithm
+    1) Randomly fill the board with gardens and walkways (3x3 blocks) OR mutate the existing board
+    2) For each walkway see if it's completely surrounded, if it is, copy to the "next Iteration pad" as a possible walkway
+    3) Starting at the edges, flood all the possible walkway tiles
+    4) Remove any remaining possible walkway tiles
+    5) For each garden block check if there is a walkway with in 2 blocks horizontally or verically, if there, copy to "next Iteration pad" and count it in the score
+    
+    Codes
+    -2,-3) Placeholder for walkway calculation
+    -1) Bad tile
+     0) walkway
+     1) garden
+    
+    -->
+    <script>
+      function $(elId){return document.getElementById(elId);}
+      
+      function Garden(x,y){
+        this.age = 0;
+        this.forceMutate = 0;
+        if (typeof(x)=="object"){
+          var parent = x;
+          var mutate = y == true;
+          this.forceMutate = parent.forceMutate;
+          this.x = parent.x;
+          this.y = parent.y;
+          this.score = parent.score;
+          this.board = [];
+          for(var i=0; i<this.x; i++){
+            this.board.push([]);
+            for(var j=0; j<this.y; j++){
+              this.board[i].push(parent.board[i][j]);
+              if (mutate && this.board[i][j] == -1){
+                if (Math.random() < .9){
+                  this.board[i][j] = 0;
+                } else {
+                  this.board[i][j] = 1;
+                }
+              }
+            }
+          }
+          
+          if (mutate){
+            var changes = Math.sqrt( (maxUnchanged-parent.age) / 10 );
+            for(var i=0; i<changes; i++){
+              var tx = Math.floor(Math.random() * this.x);
+              var ty = Math.floor(Math.random() * this.y);
+              var t = Math.round(Math.random());
+              if (i==0) t = 0;
+              
+              if (t == 0){
+                this.setWalkwayBlock(this.board, tx, ty, true);
+              } else {
+                this.board[tx][ty] = 1;
+              }
+            }
+          }
+        } else {
+          this.x = x;
+          this.y = y;
+          this.score = 0;
+          this.board = [];
+          for(var i=0; i<this.x; i++){
+            this.board.push([]);
+            for(var j=0; j<this.y; j++){
+              this.board[i].push(0);
+            }
+          }
+        }
+        this._removeBadTiles();
+        this.optimize();
+      }
+      Garden.prototype.display = function(){
+        var out = "";
+        for(var i=0 ; i<this.x ; i++){
+          for(var j=0 ; j<this.y ; j++){
+            if (this.board[i][j] === 1){
+              out += "[]";
+            } else if (this.board[i][j] === 0){
+              out += "::";
+            } else if (this.board[i][j] === -1){
+              out += "XX";
+            } else if (this.board[i][j] === -2){
+              out += "@@";
+            } else if (this.board[i][j] === -3){
+              out += "--";
+            }
+          }
+          out += "<br />";
+        }
+        out += "Density: " + this.score + " / " + (this.x*this.y) + " = " + (this.score / (this.x*this.y));
+        $("body").innerHTML = out;
+      }
+      Garden.prototype._removeBadTiles = function(){
+        var newBoard = [];
+        
+        //Generate a new board
+        for(var i=0; i<this.x; i++){
+          newBoard.push([]);
+          for(var j=0; j<this.y; j++){
+            newBoard[i].push(-1);
+          }
+        }
+        
+        //Check that walkways occure in 3x3 blocks
+        for(var i=0; i<this.x; i++){
+          for(var j=0; j<this.y; j++){
+            if (this.checkWalkwayBlock(i,j)) this.setWalkwayBlock(newBoard, i, j);
+          }
+        }
+        
+        //flood walkways from edges
+        for(var i=0; i<this.x; i++){
+          if (newBoard[i][0] == -2){
+            this.walkwayFlood(newBoard, i ,0);
+          }
+          if (newBoard[i][this.y-1] == -2){
+            this.walkwayFlood(newBoard, i ,this.y-1);
+          }
+        }
+        for(var i=0; i<this.y; i++){
+          if (newBoard[0][i] == -2){
+            this.walkwayFlood(newBoard, 0, i);
+          }
+          if (newBoard[this.x-1][i] == -2){
+            this.walkwayFlood(newBoard, this.x-1, i);
+          }
+        }
+        
+        //Replace temporary walkways with bad-tiles
+        for(var i=0; i<this.x; i++){
+          for(var j=0; j<this.y; j++){
+            if (newBoard[i][j] == -2) newBoard[i][j] = -1;
+          }
+        }
+        
+        var score = 0;
+        //check that garden tiles are with-in 2 of a walkway
+        for(var i=0; i<this.x; i++){
+          for(var j=0; j<this.y; j++){
+            if (this.board[i][j] == 1 && this.checkGardenBlock(newBoard, i,j)){
+              newBoard[i][j] = 1;
+              score++;
+            }
+          }
+        }
+        
+        this.board = newBoard;
+        this.score = score;
+      }
+      Garden.prototype.checkWalkwayBlock = function(x,y){
+        var isBlock = this.board[x][y] == 0;
+        if (x-1 >= 0) isBlock = isBlock && this.board[x-1][y] == 0;
+        if (x+1 < this.x) isBlock = isBlock && this.board[x+1][y] == 0;
+        if (y-1 >= 0) isBlock = isBlock && this.board[x][y-1] == 0;
+        if (x-1 >= 0 && y-1 >= 0) isBlock = isBlock && this.board[x-1][y-1] == 0;
+        if (x+1 < this.x && y-1 >= 0) isBlock = isBlock && this.board[x+1][y-1] == 0;
+        if (y+1 <= this.y) isBlock = isBlock && this.board[x][y+1] == 0;
+        if (x-1 >= 0 && y+1 <= this.y) isBlock = isBlock && this.board[x-1][y+1] == 0;
+        if (x+1 < this.x && y+1 <= this.y) isBlock = isBlock && this.board[x+1][y+1] == 0;
+        return isBlock
+      }
+      Garden.prototype.setWalkwayBlock = function (board, i, j, setToFullTile){
+        var tileValue = -2;
+        if (setToFullTile == true) tileValue = 0;
+        board[i][j] = tileValue;
+        if (i+1 < this.x) board[i+1][j] = tileValue;
+        if (i-1 >= 0) board[i-1][j] = tileValue;
+        
+        if (j-1 >= 0) board[i][j-1] = tileValue;
+        if (i+1 < this.x && j-1 >= 0) board[i+1][j-1] = tileValue;
+        if (i-1 >= 0 && j-1 >= 0) board[i-1][j-1] = tileValue;
+        
+        if (j+1 < this.y) board[i][j+1] = tileValue;
+        if (i+1 < this.x && j+1 < this.y) board[i+1][j+1] = tileValue;
+        if (i-1 >= 0 && j+1 < this.y) board[i-1][j+1] = tileValue;
+      }
+      Garden.prototype.checkGardenBlock = function(board, x,y){
+        var range = [-2,-1,0,1,2];
+        for(var i=0; i<range.length; i++){
+          for(var j=0; j<range.length; j++){
+            var dx = x+range[i];
+            var dy = y+range[j];
+            if (dx >=0 && dx < this.x && dy >=0 && dy < this.y && board[dx][dy] == 0) return true;
+          }
+        }
+        return false;
+      }
+      Garden.prototype.walkwayFlood = function(board, x ,y){
+        board[x][y] = 0;
+        range = [[0,-1],[0,1],[1,0],[-1,0]];
+        for(var i=0; i<3; i++){
+            var dx = x+range[i][0];
+            var dy = y+range[i][1];
+            if (dx >=0 && dx < this.x && dy >=0 && dy < this.y && board[dx][dy] == -2) chain = this.walkwayFlood(board,dx,dy);
+        }
+      }
+      Garden.prototype.fillWalkway = function(board, fillCoords){
+        for(var i=0; i<fillCoords.length; i++){
+          var x = fillCoords[i][0];
+          var y = fillCoords[i][1];
+          board[x][y] = 0;
+        }
+      }
+      Garden.prototype.optimize = function(){
+        for(var i=0; i<this.x; i++){
+          for(var j=0; j<this.y; j++){
+            if (this.board[i][j] == -1 && this.checkGardenBlock(this.board, i,j)){
+              this.board[i][j] = 1;
+              this.score++;
+            }
+          }
+        }
+      }
+      
+      function init(){
+        garden.display();
+        setInterval(test,30);
+      }
+      
+      function test(){
+        var newGarden = new Garden(garden, true);
+        if (newGarden.score > garden.score){
+          garden = newGarden;
+          garden.display();
+          var density = garden.score / (garden.x*garden.y);
+          if ( density > maxDensity) maxDensity = density;
+          $("body").innerHTML += "<br />Max: " + maxDensity;
+        } else {
+          garden.age++;
+          if (garden.age > maxUnchanged){
+            if (garden.forceMutate < 5){
+              garden.age = 0;
+              garden = new Garden(garden, true);
+              garden.forceMutate++;
+            } else {
+              garden = new Garden(garden.x, garden.y);
+            }
+          }
+        }
+      }
+      
+      var maxDensity = 0;
+      var maxUnchanged = 200;
+      var garden = new Garden(60,60);
+      window.onload = init;
+    </script>
+    <style>
+      body{
+        font-family: Andale Mono, monospace;
+      }
+    </style>
+  </head>
+  <body id="body">
+    this is a test
+  </body>
+</html>
